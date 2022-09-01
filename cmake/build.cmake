@@ -220,6 +220,8 @@ target_include_directories(${TARGET}
     ${LIBWESTON_INCLUDE_DIRS}
     ## User libraries
     ${USER_APP_INCLUDE_DIRS}
+    ${GLIB_INCLUDE_DIRS}
+    ${MALIIT_GLIB_INCLUDE_DIRS}
 )
 
 target_link_libraries(${TARGET}
@@ -239,6 +241,8 @@ target_link_libraries(${TARGET}
     ${FLUTTER_EMBEDDER_LIB}
     ## User libraries
     ${USER_APP_LIBRARIES}
+    ${GLIB_LDFLAGS}
+    ${MALIIT_GLIB_LDFLAGS}
 )
 
 if(${BACKEND_TYPE} MATCHES "DRM-(GBM|EGLSTREAM)")
