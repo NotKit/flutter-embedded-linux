@@ -71,6 +71,9 @@ class ELinuxWindowWayland : public ELinuxWindow, public WindowBindingHandler {
   void UpdateVirtualKeyboardStatus(const bool show) override;
 
   // |FlutterWindowBindingHandler|
+  void UpdateVirtualKeyboardArea(int x, int y, int width, int height) override;
+
+  // |FlutterWindowBindingHandler|
   std::string GetClipboardData() override;
 
   // |FlutterWindowBindingHandler|
@@ -130,6 +133,7 @@ class ELinuxWindowWayland : public ELinuxWindow, public WindowBindingHandler {
   bool restore_window_required_ = false;
   int32_t restore_window_width_;
   int32_t restore_window_height_;
+  int32_t window_view_height_;
 
   bool display_valid_;
   bool running_;

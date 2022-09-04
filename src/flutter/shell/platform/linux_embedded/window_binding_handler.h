@@ -67,6 +67,10 @@ class WindowBindingHandler {
   // shown by Flutter events.
   virtual void UpdateVirtualKeyboardStatus(const bool show) = 0;
 
+  // Sets the virtual keyboard area from the input method
+  // that can be used to resize the window
+  virtual void UpdateVirtualKeyboardArea(int x, int y, int width, int height) { }
+
   // Returns the clipboard data.
   virtual std::string GetClipboardData() = 0;
 

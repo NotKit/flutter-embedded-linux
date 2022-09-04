@@ -133,7 +133,7 @@ const xdg_toplevel_listener ELinuxWindowWayland::kXdgToplevelListener = {
           }
 
           self->view_properties_.width = next_width;
-          self->view_properties_.height = next_height;
+          self->view_properties_.height = self->window_view_height_ = next_height;
           if (self->window_decorations_) {
             self->window_decorations_->Resize(next_width, next_height);
           }
@@ -549,7 +549,7 @@ const wl_output_listener ELinuxWindowWayland::kWlOutputListener = {
         if (self->view_properties_.view_mode ==
             FlutterDesktopViewMode::kFullscreen) {
           self->view_properties_.width = width;
-          self->view_properties_.height = height;
+          self->view_properties_.height = self->window_view_height_ = height;
 
           if (self->window_decorations_) {
             self->window_decorations_->Resize(width, height);
@@ -1112,6 +1112,7 @@ bool ELinuxWindowWayland::CreateRenderSurface(int32_t width, int32_t height) {
   }
   native_window_ =
       std::make_unique<NativeWindowWayland>(wl_compositor_, width, height);
+  window_view_height_ = height;
 
   xdg_surface_ =
       xdg_wm_base_get_xdg_surface(xdg_wm_base_, native_window_->Surface());
@@ -1181,6 +1182,33 @@ void ELinuxWindowWayland::UpdateVirtualKeyboardStatus(const bool show) {
     ShowVirtualKeyboard();
   } else {
     DismissVirtualKeybaord();
+  }
+}
+
+void ELinuxWindowWayland::UpdateVirtualKeyboardArea(int x, int y, int width, int height) {
+  // Resize content area only when virtual keyboard is invoked in maximized
+  // or full screen mode
+  if (!(maximised_ || view_properties_.view_mode == FlutterDesktopViewMode::kFullscreen)) {
+    return;
+  }
+
+  if (width > 0 && height > 0) {
+    if (!is_requested_show_virtual_keyboard_) {
+      window_view_height_ = view_properties_.height;
+      restore_window_required_ = false;
+    }
+    is_requested_show_virtual_keyboard_ = true;
+  } else {
+    is_requested_show_virtual_keyboard_ = false;
+  }
+
+  if (window_view_height_) {
+    view_properties_.height = window_view_height_ - height;
+  }
+
+  if (binding_handler_delegate_) {
+    binding_handler_delegate_->OnWindowSizeChanged(view_properties_.width,
+                                                    view_properties_.height);
   }
 }
 

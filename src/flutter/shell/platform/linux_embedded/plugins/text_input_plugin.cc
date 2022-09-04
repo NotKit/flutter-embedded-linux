@@ -405,6 +405,12 @@ gboolean TextInputPlugin::MaliitHandleUpdateInputMethodArea(MaliitContext *obj,
                                           gint height,
                                           gpointer user_data)
 {
+  auto self = reinterpret_cast<TextInputPlugin*>(user_data);
+
+  if (self->delegate_) {
+    self->delegate_->UpdateVirtualKeyboardArea(x, y, width, height);
+  }
+
   return TRUE;
 }
 
