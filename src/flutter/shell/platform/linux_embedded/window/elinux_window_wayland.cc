@@ -561,6 +561,15 @@ const wl_output_listener ELinuxWindowWayland::kWlOutputListener = {
       ELINUX_LOG(INFO) << "Display output scale: " << scale;
       if (!self->view_properties_.force_scale_factor)
         self->current_scale_ = scale;
+
+      char* grid_unit_px_env = getenv("GRID_UNIT_PX");
+      if (grid_unit_px_env) {
+        int grid_unit_px = atoi(grid_unit_px_env);
+        // The scaling constant is pretty arbitrary for now
+        double scale_factor = (double)grid_unit_px / 8.0f;
+        ELINUX_LOG(INFO) << "Ubuntu Touch GRID_UNIX_PX-based scale: " << scale_factor;
+        self->current_scale_ = scale_factor;
+      }
     },
 };
 
