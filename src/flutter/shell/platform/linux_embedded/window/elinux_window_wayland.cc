@@ -92,22 +92,36 @@ const xdg_toplevel_listener ELinuxWindowWayland::kXdgToplevelListener = {
            int32_t height,
            wl_array* states) {
           auto is_maximized = false;
+          auto is_activated = false;
+          // states->size is a byte count; iterate uint32_t elements.
           uint32_t* state = static_cast<uint32_t*>(states->data);
-          for (auto i = 0; i < states->size; i++) {
-            switch (*state) {
+          size_t state_count = states->size / sizeof(uint32_t);
+          for (size_t i = 0; i < state_count; i++) {
+            switch (state[i]) {
               case XDG_TOPLEVEL_STATE_MAXIMIZED:
                 is_maximized = true;
                 break;
-              case XDG_TOPLEVEL_STATE_RESIZING:
               case XDG_TOPLEVEL_STATE_ACTIVATED:
+                is_activated = true;
+                break;
+              case XDG_TOPLEVEL_STATE_RESIZING:
               case XDG_TOPLEVEL_STATE_FULLSCREEN:
               default:
                 break;
             }
-            state++;
           }
 
           auto self = reinterpret_cast<ELinuxWindowWayland*>(data);
+
+          // Hide the on-screen keyboard when the window loses focus and restore
+          // it when focus returns.
+          if (is_activated != self->window_activated_) {
+            self->window_activated_ = is_activated;
+            if (self->binding_handler_delegate_) {
+              self->binding_handler_delegate_->OnWindowActivated(is_activated);
+            }
+          }
+
           if (self->current_rotation_ == 90 || self->current_rotation_ == 270) {
             std::swap(width, height);
           }
@@ -808,6 +822,7 @@ ELinuxWindowWayland::ELinuxWindowWayland(
       display_valid_(false),
       running_(false),
       maximised_(false),
+      window_activated_(true),
       is_requested_show_virtual_keyboard_(false),
       xdg_toplevel_(nullptr),
       wl_compositor_(nullptr),

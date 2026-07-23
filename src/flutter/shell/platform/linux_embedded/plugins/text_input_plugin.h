@@ -27,6 +27,10 @@ class TextInputPlugin {
   void OnKeyPressed(uint32_t keycode, uint32_t code_point);
   void DispatchEvent();
 
+  // Hides the on-screen keyboard when the window loses focus and restores it
+  // when focus returns to a still-focused text field.
+  void OnWindowActivated(bool activated);
+
  private:
   // Sends the current state of the given model to the Flutter engine.
   void SendStateUpdate(const TextInputModel& model);
@@ -84,6 +88,13 @@ class TextInputPlugin {
   void MaliitShowInputMethod();
   void MaliitHideInputMethod();
 
+  // Reports the surrounding (committed) text and cursor to the Maliit server.
+  // Must be called outside a signal handler to avoid re-entrant D-Bus calls.
+  void MaliitUpdateSurrounding();
+
+  // Maps the current input type to a Maliit::TextContentType value.
+  int MaliitContentType() const;
+
   // The MethodChannel used for communication with the Flutter engine.
   std::unique_ptr<flutter::MethodChannel<rapidjson::Document>> channel_;
 
@@ -103,6 +114,14 @@ class TextInputPlugin {
 
   // The delegate for virtual keyboard updates.
   WindowBindingHandler* delegate_;
+
+  // Set after an edit; the surrounding text is flushed to the server in
+  // DispatchEvent(), once the dispatch loop is no longer running.
+  bool surrounding_dirty_ = false;
+
+  // Whether Flutter wants the on-screen keyboard shown. Tracks show/hide
+  // requests so focus changes can hide and restore the keyboard.
+  bool keyboard_shown_ = false;
 
   GMainContext *glib_ctx_;
   GMainLoop *glib_loop_;

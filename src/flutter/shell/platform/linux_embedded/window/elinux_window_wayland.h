@@ -138,6 +138,8 @@ class ELinuxWindowWayland : public ELinuxWindow, public WindowBindingHandler {
   bool display_valid_;
   bool running_;
   bool maximised_;
+  // Whether the toplevel currently holds focus (xdg_toplevel ACTIVATED state).
+  bool window_activated_;
   uint32_t last_frame_time_;
 
   // Indicates that exists a keyboard show request from Flutter Engine.

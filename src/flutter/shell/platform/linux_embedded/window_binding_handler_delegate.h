@@ -15,6 +15,10 @@ class WindowBindingHandlerDelegate {
   // Typically called by currently configured WindowBindingHandler
   virtual void OnWindowSizeChanged(size_t width, size_t height) const = 0;
 
+  // Notifies delegate that the backing window's activation (focus) changed.
+  // Typically called by currently configured WindowBindingHandler
+  virtual void OnWindowActivated(bool activated) = 0;
+
   // Notifies delegate that backing window mouse has moved.
   // Typically called by currently configured WindowBindingHandler
   virtual void OnPointerMove(double x, double y) = 0;

@@ -113,6 +113,9 @@ class FlutterELinuxView : public WindowBindingHandlerDelegate {
   void OnTouchCancel() override;
 
   // |WindowBindingHandlerDelegate|
+  void OnWindowActivated(bool activated) override;
+
+  // |WindowBindingHandlerDelegate|
   void OnKeyMap(uint32_t format, int fd, uint32_t size) override;
 
   // |WindowBindingHandlerDelegate|

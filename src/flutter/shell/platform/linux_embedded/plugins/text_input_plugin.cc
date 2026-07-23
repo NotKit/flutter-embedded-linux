@@ -6,7 +6,10 @@
 
 #include <linux/input-event-codes.h>
 
+#include <codecvt>
+#include <cstdio>
 #include <iostream>
+#include <locale>
 #include <map>
 
 #include "flutter/shell/platform/common/json_method_codec.h"
@@ -138,11 +141,37 @@ void TextInputPlugin::OnKeyPressed(uint32_t keycode, uint32_t code_point) {
   }
   if (changed) {
     SendStateUpdate(*active_model_);
+    surrounding_dirty_ = true;
   }
 }
 
 void TextInputPlugin::DispatchEvent() {
   g_main_context_iteration(glib_ctx_, FALSE);
+
+  // Flush the surrounding text here, not from the signal handlers: a sync
+  // D-Bus call issued while the handler is still running inside the dispatch
+  // loop would re-enter the main context.
+  if (surrounding_dirty_) {
+    surrounding_dirty_ = false;
+    MaliitUpdateSurrounding();
+  }
+}
+
+void TextInputPlugin::OnWindowActivated(bool activated) {
+  // Only touch the on-screen keyboard when Flutter actually wants it up.
+  if (!keyboard_shown_) {
+    return;
+  }
+  if (activated) {
+    // Focus returned and a field is still active: bring the keyboard back.
+    if (active_model_) {
+      MaliitShowInputMethod();
+    }
+  } else {
+    // Window lost focus (app switch, lock screen): hide the keyboard but keep
+    // keyboard_shown_ so it is restored on re-activation.
+    MaliitHideInputMethod();
+  }
 }
 
 TextInputPlugin::TextInputPlugin(BinaryMessenger* messenger,
@@ -170,12 +199,16 @@ void TextInputPlugin::HandleMethodCall(
   const std::string& method = method_call.method_name();
 
   if (method.compare(kShowMethod) == 0) {
+    keyboard_shown_ = true;
     delegate_->UpdateVirtualKeyboardStatus(true);
     MaliitShowInputMethod();
+    surrounding_dirty_ = true;
   } else if (method.compare(kHideMethod) == 0) {
+    keyboard_shown_ = false;
     delegate_->UpdateVirtualKeyboardStatus(false);
     MaliitHideInputMethod();
   } else if (method.compare(kClearClientMethod) == 0) {
+    keyboard_shown_ = false;
     active_model_ = nullptr;
   } else if (method.compare(kSetClientMethod) == 0) {
     if (!method_call.arguments() || method_call.arguments()->IsNull()) {
@@ -252,6 +285,8 @@ void TextInputPlugin::HandleMethodCall(
     }
     active_model_->SetText(text->value.GetString());
     active_model_->SetSelection(TextRange(base, extent));
+    // Flutter is the source of truth for the field; report it to Maliit.
+    surrounding_dirty_ = true;
   } else {
     result->NotImplemented();
     return;
@@ -318,6 +353,7 @@ gboolean TextInputPlugin::MaliitHandleIMInitiatedHide(MaliitContext *obj,
     self->active_model_->EndComposing();
     self->SendStateUpdate(*self->active_model_);
   }
+  self->surrounding_dirty_ = true;
 
   return FALSE;
 }
@@ -325,14 +361,21 @@ gboolean TextInputPlugin::MaliitHandleIMInitiatedHide(MaliitContext *obj,
 gboolean TextInputPlugin::MaliitHandleCommitString(MaliitContext *obj,
                               GDBusMethodInvocation *invocation,
                               const gchar *string,
-                              int replacement_start G_GNUC_UNUSED,
-                              int replacement_length G_GNUC_UNUSED,
+                              int replacement_start,
+                              int replacement_length,
                               int cursor_pos G_GNUC_UNUSED,
                               gpointer user_data)
 {
   auto self = reinterpret_cast<TextInputPlugin*>(user_data);
   if (!self->active_model_) {
     return FALSE;
+  }
+
+  // The IME may ask to replace a span of already-committed text (autocorrect).
+  // Offsets are relative to the cursor; consume that span before inserting.
+  if (replacement_length > 0 && !self->active_model_->composing()) {
+    self->active_model_->DeleteSurrounding(replacement_start,
+                                           replacement_length);
   }
 
   if (self->active_model_->composing()) {
@@ -343,6 +386,7 @@ gboolean TextInputPlugin::MaliitHandleCommitString(MaliitContext *obj,
   }
 
   self->SendStateUpdate(*self->active_model_);
+  self->surrounding_dirty_ = true;
 
   return TRUE;
 }
@@ -351,9 +395,9 @@ gboolean TextInputPlugin::MaliitHandleUpdatePreedit(MaliitContext *obj,
                                GDBusMethodInvocation *invocation,
                                const gchar *string,
                                GVariant *formatListData,
-                               gint replaceStart G_GNUC_UNUSED,
-                               gint replaceLength G_GNUC_UNUSED,
-                               gint cursorPos,
+                               gint replaceStart,
+                               gint replaceLength,
+                               gint cursorPos G_GNUC_UNUSED,
                                gpointer user_data)
 {
   auto self = reinterpret_cast<TextInputPlugin*>(user_data);
@@ -361,12 +405,31 @@ gboolean TextInputPlugin::MaliitHandleUpdatePreedit(MaliitContext *obj,
     return FALSE;
   }
 
+  // An empty preedit must remove the composition and leave composing mode.
+  // Just finishing it keeps the (now stale) committed word around, which then
+  // reappears when the field is emptied.
+  if (!string || string[0] == '\0') {
+    if (self->active_model_->composing()) {
+      self->active_model_->UpdateComposingText(std::string());
+      self->active_model_->EndComposing();
+    }
+    self->SendStateUpdate(*self->active_model_);
+    self->surrounding_dirty_ = true;
+    return TRUE;
+  }
+
   if (!self->active_model_->composing()) {
+    // Consume the committed span the IME is pulling back into the preedit
+    // (e.g. backspacing into a finished word) before composing starts.
+    if (replaceLength > 0) {
+      self->active_model_->DeleteSurrounding(replaceStart, replaceLength);
+    }
     self->active_model_->BeginComposing();
   }
   self->active_model_->UpdateComposingText(string);
 
   self->SendStateUpdate(*self->active_model_);
+  self->surrounding_dirty_ = true;
 
   return TRUE;
 }
@@ -450,6 +513,78 @@ void TextInputPlugin::MaliitHideInputMethod() {
                                                   NULL,
                                                   &error)) {
     ELINUX_LOG(ERROR) << "Unable to hide input method: " << error->message;
+    g_clear_error(&error);
+  }
+}
+
+int TextInputPlugin::MaliitContentType() const {
+  // Maliit::TextContentType: FreeText=0, Custom=1, Email=2, Url=3, Number=4,
+  // PhoneNumber=5.
+  if (input_type_ == "TextInputType.emailAddress") {
+    return 2;
+  }
+  if (input_type_ == "TextInputType.url") {
+    return 3;
+  }
+  if (input_type_ == "TextInputType.number") {
+    return 4;
+  }
+  if (input_type_ == "TextInputType.phone") {
+    return 5;
+  }
+  return 0;
+}
+
+void TextInputPlugin::MaliitUpdateSurrounding() {
+  if (!maliit_server_ || !active_model_) {
+    return;
+  }
+
+  std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> converter;
+  std::u16string text = converter.from_bytes(active_model_->GetText());
+
+  int cursor;
+  int anchor;
+  if (active_model_->composing()) {
+    // Report the committed text only. If the word engine sees the in-flight
+    // preedit it tracks words the field no longer holds and restores them.
+    TextRange composing = active_model_->composing_range();
+    text.erase(composing.start(), composing.length());
+    cursor = anchor = static_cast<int>(composing.start());
+  } else {
+    TextRange selection = active_model_->selection();
+    cursor = static_cast<int>(selection.extent());
+    anchor = static_cast<int>(selection.base());
+  }
+
+  std::string surrounding = converter.to_bytes(text);
+  int content_type = MaliitContentType();
+  const char* free_text = content_type == 0 ? "true" : "false";
+
+  // Bake everything except the text into the parsed template; keep the text as
+  // a %s placeholder so g_variant_new_parsed handles quoting/escaping.
+  char state_template[512];
+  std::snprintf(state_template, sizeof(state_template),
+                "{'surroundingText': <%%s>,"
+                " 'cursorPosition': <%d>,"
+                " 'anchorPosition': <%d>,"
+                " 'hasSelection': <%s>,"
+                " 'contentType': <%d>,"
+                " 'predictionEnabled': <%s>,"
+                " 'correctionEnabled': <%s>,"
+                " 'autocapitalizationEnabled': <%s>,"
+                " 'hiddenText': <false>,"
+                " 'focusState': <true>}",
+                cursor, anchor, cursor != anchor ? "true" : "false",
+                content_type, free_text, free_text, free_text);
+
+  GVariant* state = g_variant_new_parsed(state_template, surrounding.c_str());
+
+  GError* error = NULL;
+  if (!maliit_server_call_update_widget_information_sync(
+          maliit_server_, state, FALSE, NULL, &error)) {
+    ELINUX_LOG(ERROR) << "Unable to update widget information: "
+                      << error->message;
     g_clear_error(&error);
   }
 }

@@ -210,6 +210,10 @@ void FlutterELinuxView::OnTouchMotion(uint32_t time,
 
 void FlutterELinuxView::OnTouchCancel() {}
 
+void FlutterELinuxView::OnWindowActivated(bool activated) {
+  textinput_handler_->OnWindowActivated(activated);
+}
+
 void FlutterELinuxView::OnKeyMap(uint32_t format, int fd, uint32_t size) {
   keyboard_handler_->OnKeymap(format, fd, size);
 }
