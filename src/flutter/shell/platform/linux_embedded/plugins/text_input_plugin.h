@@ -112,6 +112,9 @@ class TextInputPlugin {
   // https://docs.flutter.io/flutter/services/TextInputAction-class.html
   std::string input_action_;
 
+  // Whether the client hides what is typed (a password field).
+  bool obscure_text_ = false;
+
   // The delegate for virtual keyboard updates.
   WindowBindingHandler* delegate_;
 

@@ -72,6 +72,7 @@ constexpr char kPerformActionMethod[] = "TextInputClient.performAction";
 constexpr char kTextInputAction[] = "inputAction";
 constexpr char kTextInputType[] = "inputType";
 constexpr char kTextInputTypeName[] = "name";
+constexpr char kTextInputObscureText[] = "obscureText";
 constexpr char kComposingBaseKey[] = "composingBase";
 constexpr char kComposingExtentKey[] = "composingExtent";
 constexpr char kSelectionAffinityKey[] = "selectionAffinity";
@@ -247,6 +248,12 @@ void TextInputPlugin::HandleMethodCall(
           input_type_json->value.IsString()) {
         input_type_ = input_type_json->value.GetString();
       }
+    }
+    obscure_text_ = false;
+    auto obscure_text_json = client_config.FindMember(kTextInputObscureText);
+    if (obscure_text_json != client_config.MemberEnd() &&
+        obscure_text_json->value.IsBool()) {
+      obscure_text_ = obscure_text_json->value.GetBool();
     }
     active_model_ = std::make_unique<TextInputModel>();
   } else if (method.compare(kSetEditingStateMethod) == 0) {
@@ -559,7 +566,11 @@ void TextInputPlugin::MaliitUpdateSurrounding() {
 
   std::string surrounding = converter.to_bytes(text);
   int content_type = MaliitContentType();
-  const char* free_text = content_type == 0 ? "true" : "false";
+  // Prediction, correction and autocapitalization only make sense for prose.
+  // Obscured fields also opt out so passwords never reach the word engine.
+  const char* assist =
+      (content_type == 0 && !obscure_text_) ? "true" : "false";
+  const char* hidden_text = obscure_text_ ? "true" : "false";
 
   // Bake everything except the text into the parsed template; keep the text as
   // a %s placeholder so g_variant_new_parsed handles quoting/escaping.
@@ -573,10 +584,10 @@ void TextInputPlugin::MaliitUpdateSurrounding() {
                 " 'predictionEnabled': <%s>,"
                 " 'correctionEnabled': <%s>,"
                 " 'autocapitalizationEnabled': <%s>,"
-                " 'hiddenText': <false>,"
+                " 'hiddenText': <%s>,"
                 " 'focusState': <true>}",
                 cursor, anchor, cursor != anchor ? "true" : "false",
-                content_type, free_text, free_text, free_text);
+                content_type, assist, assist, assist, hidden_text);
 
   GVariant* state = g_variant_new_parsed(state_template, surrounding.c_str());
 
