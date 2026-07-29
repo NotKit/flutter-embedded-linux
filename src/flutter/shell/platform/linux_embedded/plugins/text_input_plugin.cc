@@ -518,19 +518,19 @@ void TextInputPlugin::MaliitHideInputMethod() {
 }
 
 int TextInputPlugin::MaliitContentType() const {
-  // Maliit::TextContentType: FreeText=0, Custom=1, Email=2, Url=3, Number=4,
-  // PhoneNumber=5.
-  if (input_type_ == "TextInputType.emailAddress") {
-    return 2;
-  }
-  if (input_type_ == "TextInputType.url") {
-    return 3;
-  }
+  // Maliit::TextContentType: FreeText=0, Number=1, PhoneNumber=2, Email=3,
+  // Url=4, Custom=5.
   if (input_type_ == "TextInputType.number") {
-    return 4;
+    return 1;
   }
   if (input_type_ == "TextInputType.phone") {
-    return 5;
+    return 2;
+  }
+  if (input_type_ == "TextInputType.emailAddress") {
+    return 3;
+  }
+  if (input_type_ == "TextInputType.url") {
+    return 4;
   }
   return 0;
 }
