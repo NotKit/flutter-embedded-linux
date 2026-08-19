@@ -1056,7 +1056,10 @@ void TextInputPlugin::InitMaliitConnection() {
           maliit_server_, 0, "", NULL, MaliitCallFinished,
           const_cast<char*>("registerAttributeExtension"));
   } else {
-      ELINUX_LOG(ERROR) << "Unable to connect to Maliit server: " << error->message;
+      // libmaliit-glib returns NULL without an error when the server address
+      // property is missing, which is the normal "no keyboard here" case.
+      ELINUX_LOG(ERROR) << "Unable to connect to Maliit server: "
+                        << (error ? error->message : "no server address");
       g_clear_error(&error);
       return;
   }
@@ -1095,7 +1098,8 @@ void TextInputPlugin::InitMaliitConnection() {
       // handle-plugin-settings-loaded is left to libmaliit-glib, which
       // completes it itself.
   } else {
-      ELINUX_LOG(ERROR) << "Unable to connect to Maliit context: " << error->message;
+      ELINUX_LOG(ERROR) << "Unable to connect to Maliit context: "
+                        << (error ? error->message : "no server address");
       g_clear_error(&error);
   }
 }
