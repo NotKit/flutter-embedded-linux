@@ -81,6 +81,10 @@ class FlutterELinuxView : public WindowBindingHandlerDelegate {
   // Send initial bounds to embedder.  Must occur after engine has initialized.
   void SendInitialBounds();
 
+  // Sends the initial app lifecycle state to the framework. Must be called
+  // after the engine is running.
+  void SendInitialLifecycleState();
+
   // |WindowBindingHandlerDelegate|
   void OnWindowSizeChanged(size_t width, size_t height) const override;
 

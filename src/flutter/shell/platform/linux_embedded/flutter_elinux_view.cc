@@ -211,7 +211,16 @@ void FlutterELinuxView::OnTouchMotion(uint32_t time,
 void FlutterELinuxView::OnTouchCancel() {}
 
 void FlutterELinuxView::OnWindowActivated(bool activated) {
+  // The compositor can configure the toplevel before the engine is attached.
+  if (!textinput_handler_ || !lifecycle_handler_) {
+    return;
+  }
   textinput_handler_->OnWindowActivated(activated);
+  if (activated) {
+    lifecycle_handler_->OnResumed();
+  } else {
+    lifecycle_handler_->OnInactive();
+  }
 }
 
 void FlutterELinuxView::OnKeyMap(uint32_t format, int fd, uint32_t size) {
@@ -297,6 +306,13 @@ void FlutterELinuxView::SendInitialBounds() {
   PhysicalWindowBounds bounds = binding_handler_->GetPhysicalWindowBounds();
   SendWindowMetrics(bounds.width, bounds.height,
                     binding_handler_->GetDpiScale());
+}
+
+void FlutterELinuxView::SendInitialLifecycleState() {
+  // Until the platform reports a state, the framework keeps lifecycleState
+  // null, and apps that gate work on it being resumed never run that work.
+  // The toplevel configure handler corrects this if we are not activated.
+  lifecycle_handler_->OnResumed();
 }
 
 // Set's |event_data|'s phase to either kMove or kHover depending on the current

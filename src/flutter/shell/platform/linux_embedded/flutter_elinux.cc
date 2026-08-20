@@ -107,6 +107,7 @@ FlutterDesktopViewControllerRef FlutterDesktopViewControllerCreate(
 
   // Must happen after engine is running.
   state->view->SendInitialBounds();
+  state->view->SendInitialLifecycleState();
   return state.release();
 }
 
