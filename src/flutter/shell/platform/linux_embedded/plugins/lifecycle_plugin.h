@@ -5,9 +5,8 @@
 #ifndef FLUTTER_SHELL_PLATFORM_LINUX_EMBEDDED_PLUGINS_LIFECYCLE_PLUGIN_H_
 #define FLUTTER_SHELL_PLATFORM_LINUX_EMBEDDED_PLUGINS_LIFECYCLE_PLUGIN_H_
 
-#include <memory>
+#include <string>
 
-#include "flutter/shell/platform/common/client_wrapper/include/flutter/basic_message_channel.h"
 #include "flutter/shell/platform/common/client_wrapper/include/flutter/binary_messenger.h"
 
 namespace flutter {
@@ -26,7 +25,9 @@ class LifecyclePlugin {
   void OnDetached() const;
 
  private:
-  std::unique_ptr<flutter::BasicMessageChannel<EncodableValue>> channel_;
+  void SendState(const std::string& state) const;
+
+  BinaryMessenger* messenger_;
 };
 
 }  // namespace flutter

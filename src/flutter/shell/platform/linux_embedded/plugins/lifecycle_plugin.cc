@@ -4,7 +4,6 @@
 
 #include "flutter/shell/platform/linux_embedded/plugins/lifecycle_plugin.h"
 
-#include "flutter/shell/platform/common/client_wrapper/include/flutter/standard_message_codec.h"
 #include "flutter/shell/platform/linux_embedded/logger.h"
 
 namespace flutter {
@@ -18,29 +17,36 @@ constexpr char kDetached[] = "AppLifecycleState.detached";
 }  // namespace
 
 LifecyclePlugin::LifecyclePlugin(BinaryMessenger* messenger)
-    : channel_(std::make_unique<BasicMessageChannel<EncodableValue>>(
-          messenger,
-          kChannelName,
-          &StandardMessageCodec::GetInstance())) {}
+    : messenger_(messenger) {}
+
+// flutter/lifecycle is a StringCodec channel: the payload is the bare UTF-8
+// string with no envelope, so send it through the messenger directly. Wrapping
+// it in a message channel adds the codec's type and length bytes, and the
+// framework then fails to parse the state and throws.
+void LifecyclePlugin::SendState(const std::string& state) const {
+  messenger_->Send(kChannelName,
+                   reinterpret_cast<const uint8_t*>(state.data()),
+                   state.size());
+}
 
 void LifecyclePlugin::OnInactive() const {
   ELINUX_LOG(DEBUG) << "App lifecycle changed to inactive state.";
-  channel_->Send(EncodableValue(std::string(kInactive)));
+  SendState(kInactive);
 }
 
 void LifecyclePlugin::OnResumed() const {
   ELINUX_LOG(DEBUG) << "App lifecycle changed to resumed state.";
-  channel_->Send(EncodableValue(std::string(kResumed)));
+  SendState(kResumed);
 }
 
 void LifecyclePlugin::OnPaused() const {
   ELINUX_LOG(DEBUG) << "App lifecycle changed to paused state.";
-  channel_->Send(EncodableValue(std::string(kPaused)));
+  SendState(kPaused);
 }
 
 void LifecyclePlugin::OnDetached() const {
   ELINUX_LOG(DEBUG) << "App lifecycle changed to detached state.";
-  channel_->Send(EncodableValue(std::string(kDetached)));
+  SendState(kDetached);
 }
 
 }  // namespace flutter
