@@ -4,6 +4,7 @@
 
 #include "flutter/shell/platform/linux_embedded/window/elinux_window_wayland.h"
 
+#include <errno.h>
 #include <fcntl.h>
 #include <linux/input-event-codes.h>
 #include <poll.h>
@@ -40,6 +41,9 @@ constexpr char kWlCursorThemeWatch[] = "watch";
 constexpr char kCursorNameNone[] = "none";
 
 constexpr char kClipboardMimeTypeText[] = "text/plain";
+
+// How long to wait for another client to hand over the clipboard contents.
+constexpr int kClipboardReadTimeoutMs = 200;
 }  // namespace
 
 const wl_registry_listener ELinuxWindowWayland::kWlRegistryListener = {
@@ -775,9 +779,7 @@ const wl_data_device_listener ELinuxWindowWayland::kWlDataDeviceListener = {
                     wl_data_device* wl_data_device,
                     wl_data_offer* offer) -> void {
       auto self = reinterpret_cast<ELinuxWindowWayland*>(data);
-      if (self->wl_data_offer_) {
-        wl_data_offer_destroy(self->wl_data_offer_);
-      }
+      // The offer we held is dropped, not destroyed: see SetClipboardData().
       self->wl_data_offer_ = offer;
     },
 };
@@ -796,16 +798,28 @@ const wl_data_source_listener ELinuxWindowWayland::kWlDataSourceListener = {
       }
       auto self = reinterpret_cast<ELinuxWindowWayland*>(data);
       // Write the copied data to the clipboard.
-      write(fd, self->clipboard_data_.c_str(),
-            strlen(self->clipboard_data_.c_str()));
+      const char* buf = self->clipboard_data_.data();
+      size_t left = self->clipboard_data_.size();
+      while (left > 0) {
+        auto written = write(fd, buf, left);
+        if (written < 0) {
+          if (errno == EINTR) {
+            continue;
+          }
+          break;
+        }
+        buf += written;
+        left -= written;
+      }
       close(fd);
     },
     .cancelled = [](void* data, wl_data_source* wl_data_source) -> void {
       auto self = reinterpret_cast<ELinuxWindowWayland*>(data);
-      self->clipboard_data_ = "";
-      if (self->wl_data_source_) {
-        wl_data_source_destroy(self->wl_data_source_);
+      // Someone else owns the selection now. The source is dropped, not
+      // destroyed: see SetClipboardData().
+      if (self->wl_data_source_ == wl_data_source) {
         self->wl_data_source_ = nullptr;
+        self->own_clipboard_ = false;
       }
     },
     .dnd_drop_performed = [](void* data,
@@ -837,6 +851,7 @@ ELinuxWindowWayland::ELinuxWindowWayland(
       wl_data_device_(nullptr),
       wl_data_offer_(nullptr),
       wl_data_source_(nullptr),
+      own_clipboard_(false),
       wl_cursor_theme_(nullptr),
       serial_(0),
       zwp_text_input_manager_v1_(nullptr),
@@ -934,15 +949,10 @@ ELinuxWindowWayland::~ELinuxWindowWayland() {
     }
   }
 
-  if (wl_data_offer_) {
-    wl_data_offer_destroy(wl_data_offer_);
-    wl_data_offer_ = nullptr;
-  }
-
-  if (wl_data_source_) {
-    wl_data_source_destroy(wl_data_source_);
-    wl_data_source_ = nullptr;
-  }
+  // wl_data_offer_ and wl_data_source_ are not destroyed here on purpose (see
+  // SetClipboardData()); the compositor drops them when the client disconnects.
+  wl_data_offer_ = nullptr;
+  wl_data_source_ = nullptr;
 
   if (wl_data_device_) {
     if (wl_data_device_manager_version_ >=
@@ -1265,49 +1275,78 @@ void ELinuxWindowWayland::UpdateFlutterCursor(const std::string& cursor_name) {
 }
 
 std::string ELinuxWindowWayland::GetClipboardData() {
-  std::string str = "";
-
-  if (wl_data_offer_) {
-    int fd[2];
-    if (pipe2(fd, O_CLOEXEC) == -1) {
-      return str;
-    }
-
-    wl_data_offer_receive(wl_data_offer_, kClipboardMimeTypeText, fd[1]);
-    close(fd[1]);
-    wl_display_dispatch(wl_display_);
-
-    char buf[256];
-    int len;
-    // Read data form the clipboard.
-    while ((len = read(fd[0], buf, sizeof(buf))) > 0) {
-      str.append(buf, len);
-    }
-    close(fd[0]);
-    return str;
+  // Our own copy is served without asking the compositor at all.
+  if (own_clipboard_) {
+    return clipboard_data_;
   }
 
+  if (!wl_data_offer_) {
+    return "";
+  }
+
+  int fd[2];
+  if (pipe2(fd, O_CLOEXEC) == -1) {
+    return "";
+  }
+
+  wl_data_offer_receive(wl_data_offer_, kClipboardMimeTypeText, fd[1]);
+  // The other client cannot start writing before it sees the request, and
+  // nothing else flushes the queue while we block on the pipe below.
+  wl_display_flush(wl_display_);
+  close(fd[1]);
+
+  std::string str = "";
+  char buf[256];
+  while (true) {
+    pollfd poll_fd = {.fd = fd[0], .events = POLLIN, .revents = 0};
+    auto ready = poll(&poll_fd, 1, kClipboardReadTimeoutMs);
+    if (ready < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      break;
+    }
+    if (ready == 0) {
+      // The owner of the selection never answered.
+      ELINUX_LOG(ERROR) << "Timed out reading the clipboard.";
+      break;
+    }
+
+    auto len = read(fd[0], buf, sizeof(buf));
+    if (len < 0 && errno == EINTR) {
+      continue;
+    }
+    if (len <= 0) {
+      break;
+    }
+    str.append(buf, len);
+  }
+  close(fd[0]);
   return str;
 }
 
 void ELinuxWindowWayland::SetClipboardData(const std::string& data) {
   clipboard_data_ = data;
-  if (wl_data_device_manager_) {
-    if (wl_data_source_) {
-      wl_data_source_destroy(wl_data_source_);
-      wl_data_source_ = nullptr;
-    }
-
-    wl_data_source_ =
-        wl_data_device_manager_create_data_source(wl_data_device_manager_);
-    if (!wl_data_source_) {
-      return;
-    }
-
-    wl_data_source_offer(wl_data_source_, kClipboardMimeTypeText);
-    wl_data_source_add_listener(wl_data_source_, &kWlDataSourceListener, this);
-    wl_data_device_set_selection(wl_data_device_, wl_data_source_, serial_);
+  if (!wl_data_device_manager_ || !wl_data_device_) {
+    return;
   }
+
+  // The previous data source is dropped without being destroyed, and so are the
+  // data offers above. Lomiri's compositor (Mir 1.8) keeps raw pointers between
+  // a source and the offers made from it and never clears them, so destroying
+  // either side leaves it reading freed memory and takes the whole shell down.
+  // Both objects are small and copying is rare, so leaking them is the cheapest
+  // way to stay clear of that bug.
+  wl_data_source_ =
+      wl_data_device_manager_create_data_source(wl_data_device_manager_);
+  if (!wl_data_source_) {
+    return;
+  }
+  own_clipboard_ = true;
+
+  wl_data_source_offer(wl_data_source_, kClipboardMimeTypeText);
+  wl_data_source_add_listener(wl_data_source_, &kWlDataSourceListener, this);
+  wl_data_device_set_selection(wl_data_device_, wl_data_source_, serial_);
 }
 
 bool ELinuxWindowWayland::IsValid() const {

@@ -181,6 +181,9 @@ class ELinuxWindowWayland : public ELinuxWindow, public WindowBindingHandler {
   wl_data_device* wl_data_device_;
   wl_data_offer* wl_data_offer_;
   wl_data_source* wl_data_source_;
+  // Set while our own data source owns the selection, in which case reads are
+  // served from clipboard_data_ instead of going back to the compositor.
+  bool own_clipboard_;
   uint32_t wl_data_device_manager_version_;
   uint32_t serial_;
 };
