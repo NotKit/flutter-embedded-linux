@@ -1349,6 +1349,13 @@ void ELinuxWindowWayland::SetClipboardData(const std::string& data) {
   wl_data_device_set_selection(wl_data_device_, wl_data_source_, serial_);
 }
 
+bool ELinuxWindowWayland::HasClipboardData() {
+  if (own_clipboard_) {
+    return !clipboard_data_.empty();
+  }
+  return wl_data_offer_ != nullptr;
+}
+
 bool ELinuxWindowWayland::IsValid() const {
   if (!display_valid_ || !native_window_ || !render_surface_ ||
       !native_window_->IsValid() || !render_surface_->IsValid()) {

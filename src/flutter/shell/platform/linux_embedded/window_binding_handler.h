@@ -74,6 +74,10 @@ class WindowBindingHandler {
   // Returns the clipboard data.
   virtual std::string GetClipboardData() = 0;
 
+  // Returns true if the clipboard holds text. Backends that can answer this
+  // without reading the whole clipboard should override it.
+  virtual bool HasClipboardData() { return !GetClipboardData().empty(); }
+
   // Sets the clipboard data.
   virtual void SetClipboardData(const std::string& data) = 0;
 };

@@ -25,10 +25,12 @@ constexpr char kChannelName[] = "flutter/platform";
 
 constexpr char kGetClipboardDataMethod[] = "Clipboard.getData";
 constexpr char kSetClipboardDataMethod[] = "Clipboard.setData";
+constexpr char kHasStringsClipboardMethod[] = "Clipboard.hasStrings";
 constexpr char kSystemNavigatorPopMethod[] = "SystemNavigator.pop";
 
 constexpr char kTextPlainFormat[] = "text/plain";
 constexpr char kTextKey[] = "text";
+constexpr char kValueKey[] = "value";
 
 constexpr char kUnknownClipboardFormatError[] =
     "Unknown clipboard format error";
@@ -81,6 +83,16 @@ void PlatformPlugin::HandleMethodCall(
     }
     delegate_->SetClipboardData(itr->value.GetString());
     result->Success();
+  } else if (method.compare(kHasStringsClipboardMethod) == 0) {
+    // The framework only offers a paste button once this answers true, so it
+    // has to be implemented even though it carries no data.
+    rapidjson::Document document;
+    document.SetObject();
+    rapidjson::Document::AllocatorType& allocator = document.GetAllocator();
+    document.AddMember(rapidjson::Value(kValueKey, allocator),
+                       rapidjson::Value(delegate_->HasClipboardData()),
+                       allocator);
+    result->Success(document);
   } else if (method.compare(kSystemNavigatorPopMethod) == 0) {
     // todo: it is necessary to consider whether exit() is okay
     exit(EXIT_SUCCESS);

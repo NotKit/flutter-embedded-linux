@@ -79,6 +79,9 @@ class ELinuxWindowWayland : public ELinuxWindow, public WindowBindingHandler {
   // |FlutterWindowBindingHandler|
   void SetClipboardData(const std::string& data) override;
 
+  // |FlutterWindowBindingHandler|
+  bool HasClipboardData() override;
+
  private:
   struct CursorInfo {
     std::string cursor_name;
