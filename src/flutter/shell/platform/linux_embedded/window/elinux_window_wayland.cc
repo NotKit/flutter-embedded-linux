@@ -852,6 +852,7 @@ ELinuxWindowWayland::ELinuxWindowWayland(
       wl_data_offer_(nullptr),
       wl_data_source_(nullptr),
       own_clipboard_(false),
+      content_hub_published_(false),
       wl_cursor_theme_(nullptr),
       serial_(0),
       zwp_text_input_manager_v1_(nullptr),
@@ -1275,6 +1276,16 @@ void ELinuxWindowWayland::UpdateFlutterCursor(const std::string& cursor_name) {
 }
 
 std::string ELinuxWindowWayland::GetClipboardData() {
+  // On Ubuntu Touch content-hub is the system-wide clipboard and the Wayland
+  // selection only reaches other Wayland clients, so the hub is asked first.
+  // Our own copies go there too, unless it turned them down.
+  if (!own_clipboard_ || content_hub_published_) {
+    std::string text;
+    if (content_hub_.GetText(&text)) {
+      return text;
+    }
+  }
+
   // Our own copy is served without asking the compositor at all.
   if (own_clipboard_) {
     return clipboard_data_;
@@ -1327,6 +1338,8 @@ std::string ELinuxWindowWayland::GetClipboardData() {
 
 void ELinuxWindowWayland::SetClipboardData(const std::string& data) {
   clipboard_data_ = data;
+  content_hub_published_ = content_hub_.SetText(data);
+
   if (!wl_data_device_manager_ || !wl_data_device_) {
     return;
   }
@@ -1350,6 +1363,15 @@ void ELinuxWindowWayland::SetClipboardData(const std::string& data) {
 }
 
 bool ELinuxWindowWayland::HasClipboardData() {
+  // Same order as GetClipboardData(): whatever it would return has to be what
+  // is reported here, or the framework hides the paste button over real data.
+  if (!own_clipboard_ || content_hub_published_) {
+    std::string text;
+    if (content_hub_.GetText(&text)) {
+      return !text.empty();
+    }
+  }
+
   if (own_clipboard_) {
     return !clipboard_data_.empty();
   }

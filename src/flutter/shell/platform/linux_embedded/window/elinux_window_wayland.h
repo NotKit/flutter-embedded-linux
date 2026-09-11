@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "flutter/shell/platform/linux_embedded/surface/surface_gl.h"
+#include "flutter/shell/platform/linux_embedded/window/content_hub_clipboard.h"
 #include "flutter/shell/platform/linux_embedded/window/elinux_window.h"
 #include "flutter/shell/platform/linux_embedded/window/native_window_wayland.h"
 #include "flutter/shell/platform/linux_embedded/window/renderer/window_decorations_wayland.h"
@@ -187,6 +188,10 @@ class ELinuxWindowWayland : public ELinuxWindow, public WindowBindingHandler {
   // Set while our own data source owns the selection, in which case reads are
   // served from clipboard_data_ instead of going back to the compositor.
   bool own_clipboard_;
+  ContentHubClipboard content_hub_;
+  // Set while content-hub holds the copy we last made, i.e. while it can be
+  // asked for our own clipboard as well as everyone else's.
+  bool content_hub_published_;
   uint32_t wl_data_device_manager_version_;
   uint32_t serial_;
 };

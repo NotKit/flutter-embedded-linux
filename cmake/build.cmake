@@ -69,6 +69,7 @@ else()
     "${_wayland_protocols_src_dir}/text-input-unstable-v1-protocol.c"
     "${_wayland_protocols_src_dir}/text-input-unstable-v3-protocol.c"
     "${_wayland_protocols_src_dir}/presentation-time-protocol.c"
+    "src/flutter/shell/platform/linux_embedded/window/content_hub_clipboard.cc"
     "src/flutter/shell/platform/linux_embedded/window/elinux_window_wayland.cc"
     "src/flutter/shell/platform/linux_embedded/window/native_window_wayland.cc"
     "src/flutter/shell/platform/linux_embedded/window/native_window_wayland_decoration.cc"
@@ -221,6 +222,7 @@ target_include_directories(${TARGET}
     ## User libraries
     ${USER_APP_INCLUDE_DIRS}
     ${GLIB_INCLUDE_DIRS}
+    ${GIO_INCLUDE_DIRS}
     ${MALIIT_GLIB_INCLUDE_DIRS}
 )
 
@@ -242,6 +244,7 @@ target_link_libraries(${TARGET}
     ## User libraries
     ${USER_APP_LIBRARIES}
     ${GLIB_LDFLAGS}
+    ${GIO_LDFLAGS}
     ${MALIIT_GLIB_LDFLAGS}
 )
 

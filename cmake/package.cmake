@@ -37,3 +37,6 @@ pkg_check_modules(GLES REQUIRED glesv2)
 # For maliit keyboard integration
 pkg_search_module(GLIB REQUIRED glib-2.0)
 pkg_search_module(MALIIT_GLIB REQUIRED maliit-glib)
+
+# For the content-hub clipboard
+pkg_search_module(GIO REQUIRED gio-2.0)
